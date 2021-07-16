@@ -15,6 +15,7 @@ spec:
       labels:
         app: minio
     spec:
+      serviceAccountName: minio
       containers:
       - args:
         - server

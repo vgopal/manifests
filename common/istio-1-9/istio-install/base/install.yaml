@@ -1103,7 +1103,7 @@ data:
           "image": "proxyv2",
           "includeIPRanges": "*",
           "logLevel": "warning",
-          "privileged": false,
+          "privileged": true,
           "readinessFailureThreshold": 30,
           "readinessInitialDelaySeconds": 1,
           "readinessPeriodSeconds": 2,
@@ -1252,7 +1252,7 @@ data:
             - "-z"
             - "15006"
             - "-u"
-            - "1337"
+            - "1000799999"
             - "-m"
             - "{{ annotation .ObjectMeta `sidecar.istio.io/interceptionMode` .ProxyConfig.InterceptionMode }}"
             - "-i"
@@ -1329,13 +1329,13 @@ data:
                 - ALL
             {{- if not .Values.istio_cni.enabled }}
               readOnlyRootFilesystem: false
-              runAsGroup: 0
+              runAsGroup: 1000799999
               runAsNonRoot: false
-              runAsUser: 0
+              runAsUser: 1000799999
             {{- else }}
               readOnlyRootFilesystem: true
-              runAsGroup: 1337
-              runAsUser: 1337
+              runAsGroup: 1000799999
+              runAsUser: 1000799999
               runAsNonRoot: true
             {{- end }}
             restartPolicy: Always
@@ -1543,14 +1543,14 @@ data:
                 - ALL
               privileged: {{ .Values.global.proxy.privileged }}
               readOnlyRootFilesystem: {{ not .Values.global.proxy.enableCoreDump }}
-              runAsGroup: 1337
-              fsGroup: 1337
+              runAsGroup: 1000799999
+              fsGroup: 1000799999
               {{ if or (eq (annotation .ObjectMeta `sidecar.istio.io/interceptionMode` .ProxyConfig.InterceptionMode) `TPROXY`) (eq (annotation .ObjectMeta `sidecar.istio.io/capNetBindService` .Values.global.proxy.capNetBindService) `true`) -}}
               runAsNonRoot: false
               runAsUser: 0
               {{- else -}}
               runAsNonRoot: true
-              runAsUser: 1337
+              runAsUser: 1000799999
               {{- end }}
             resources:
           {{- if or (isset .ObjectMeta.Annotations `sidecar.istio.io/proxyCPU`) (isset .ObjectMeta.Annotations `sidecar.istio.io/proxyMemory`) (isset .ObjectMeta.Annotations `sidecar.istio.io/proxyCPULimit`) (isset .ObjectMeta.Annotations `sidecar.istio.io/proxyMemoryLimit`) }}
@@ -1690,7 +1690,7 @@ data:
           {{- end }}
           {{- if eq (env "ENABLE_LEGACY_FSGROUP_INJECTION" "true") "true" }}
           securityContext:
-            fsGroup: 1337
+            fsGroup: 1000799999
           {{- end }}
       gateway: |
         {{- $containers := list }}
@@ -1924,7 +1924,7 @@ data:
           {{- end }}
           {{- if eq (env "ENABLE_LEGACY_FSGROUP_INJECTION" "true") "true" }}
           securityContext:
-            fsGroup: 1337
+            fsGroup: 1000799999
           {{- end }}
 ---
 apiVersion: admissionregistration.k8s.io/v1beta1
@@ -2164,10 +2164,10 @@ spec:
           name: ingressgateway-ca-certs
           readOnly: true
       securityContext:
-        fsGroup: 1337
-        runAsGroup: 1337
+        fsGroup: 1000799999
+        runAsGroup: 1000799999
         runAsNonRoot: true
-        runAsUser: 1337
+        runAsUser: 1000799999
       serviceAccountName: istio-ingressgateway-service-account
       volumes:
       - configMap:
@@ -2322,9 +2322,9 @@ spec:
           capabilities:
             drop:
             - ALL
-          runAsGroup: 1337
+          runAsGroup: 1000799999
           runAsNonRoot: true
-          runAsUser: 1337
+          runAsUser: 1000799999
         volumeMounts:
         - mountPath: /etc/istio/config
           name: config-volume
@@ -2344,7 +2344,7 @@ spec:
           readOnly: true
       nodeSelector: {}
       securityContext:
-        fsGroup: 1337
+        fsGroup: 1000799999
       serviceAccountName: istiod-service-account
       volumes:
       - emptyDir:
