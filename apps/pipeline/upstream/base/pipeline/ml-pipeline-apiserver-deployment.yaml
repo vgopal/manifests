@@ -73,7 +73,7 @@ spec:
             secretKeyRef:
               name: mlpipeline-minio-artifact
               key: secretkey
-        image: gcr.io/ml-pipeline/api-server:dummy
+        image: gcr.io/ml-pipeline/api-server:1.5.1
         imagePullPolicy: IfNotPresent
         name: ml-pipeline-api-server
         ports:
