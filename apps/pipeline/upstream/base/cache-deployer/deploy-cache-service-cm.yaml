@@ -1,0 +1,273 @@
+apiVersion: v1
+data:
+  deploy-cache-service.sh: |-
+    set -ex
+    # Warning: grep in this image does not support long option names like --word-regexp
+
+    echo "Start deploying cache service to existing cluster:"
+
+    NAMESPACE=${NAMESPACE_TO_WATCH:-kubeflow}
+    MUTATING_WEBHOOK_CONFIGURATION_NAME="cache-webhook-${NAMESPACE}"
+    WEBHOOK_SECRET_NAME=webhook-server-tls
+
+    # Getting correct kubectl. Kubernetes only supports kubectl versions within +/-1 minor version.
+    # kubectl has some resource version information hardcoded, so using too old kubectl can lead to errors
+    mkdir -p "$HOME/bin"
+    export PATH="$HOME/bin:$PATH"
+    {
+        server_version_major_minor=$(kubectl version --output json | jq --raw-output '(.serverVersion.major + "." + .serverVersion.minor)' | tr -d '"+')
+        stable_build_version=$(curl -s "https://storage.googleapis.com/kubernetes-release/release/stable-${server_version_major_minor}.txt")
+        kubectl_url="https://storage.googleapis.com/kubernetes-release/release/${stable_build_version}/bin/linux/amd64/kubectl"
+        curl -L -o "$HOME/bin/kubectl" "$kubectl_url"
+        chmod +x "$HOME/bin/kubectl"
+    } || true
+
+    # This should fail if there are connectivity problems
+    # Gotcha: Listing all objects requires list permission,
+    # but when listing a single oblect kubectl will fail if it's not found
+    # unless --ignore-not-found is specified.
+    kubectl get mutatingwebhookconfigurations "${MUTATING_WEBHOOK_CONFIGURATION_NAME}" --namespace "${NAMESPACE}" --ignore-not-found >$HOME/webhooks.txt
+    kubectl get secrets "${WEBHOOK_SECRET_NAME}" --namespace "${NAMESPACE}" --ignore-not-found >$HOME/cache_secret.txt
+
+    webhook_config_exists=false
+    if grep "${MUTATING_WEBHOOK_CONFIGURATION_NAME}" -w <$HOME/webhooks.txt; then
+        webhook_config_exists=true
+    fi
+
+    webhook_secret_exists=false
+    if grep "${WEBHOOK_SECRET_NAME}" -w <$HOME/cache_secret.txt; then
+        webhook_secret_exists=true
+    fi
+
+    if [ "$webhook_config_exists" == "true" ] && [ "$webhook_secret_exists" == "true" ]; then
+        echo "Webhook config and secret are already installed. Sleeping forever."
+        sleep infinity
+    fi
+
+    if [ "$webhook_config_exists" == "true" ]; then
+        echo "Warning: Webhook config exists, but the secret does not exist. Reinstalling."
+        kubectl delete mutatingwebhookconfigurations "${MUTATING_WEBHOOK_CONFIGURATION_NAME}" --namespace "${NAMESPACE}"
+    fi
+
+    if [ "$webhook_secret_exists" == "true" ]; then
+        echo "Warning: Webhook secret exists, but the config does not exist. Reinstalling."
+        kubectl delete secrets "${WEBHOOK_SECRET_NAME}" --namespace "${NAMESPACE}"
+    fi
+
+
+    export CA_FILE="ca_cert"
+    rm -f $HOME/${CA_FILE}
+    touch $HOME/${CA_FILE}
+
+    # Generate signed certificate for cache server.
+    ./webhook-create-signed-cert.sh --namespace "${NAMESPACE}" --cert_output_path "$HOME/${CA_FILE}" --secret "${WEBHOOK_SECRET_NAME}"
+    echo "Signed certificate generated for cache server"
+
+    cache_webhook_config_template="cache-webhook-config.v1.yaml.template"
+    NAMESPACE="$NAMESPACE" ./webhook-patch-ca-bundle.sh --cert_input_path "$HOME/${CA_FILE}" <./"$cache_webhook_config_template" >$HOME/cache-configmap-ca-bundle.yaml
+    echo "CA_BUNDLE patched successfully"
+
+    # Create MutatingWebhookConfiguration
+    cat $HOME/cache-configmap-ca-bundle.yaml
+    kubectl apply -f $HOME/cache-configmap-ca-bundle.yaml --namespace "${NAMESPACE}"
+
+    # TODO: Check whether we really need to check for the existence of the webhook
+    # Usually the Kubernetes objects appear immediately.
+    while true; do
+        # Should fail if there are connectivity problems
+        kubectl get mutatingwebhookconfigurations "${MUTATING_WEBHOOK_CONFIGURATION_NAME}" --namespace "${NAMESPACE}" --ignore-not-found >$HOME/webhooks.txt
+
+        if grep "${MUTATING_WEBHOOK_CONFIGURATION_NAME}" -w <$HOME/webhooks.txt; then
+            echo "Webhook has been installed. Sleeping forever."
+            sleep infinity
+        else
+            echo "Webhook is not visible yet. Waiting a bit."
+            sleep 10s
+        fi
+    done
+  webhook-create-signed-cert.sh: |-
+    set -ex
+    usage() {
+        cat <<EOF
+    Generate certificate suitable for use with an sidecar-injector webhook service.
+    This script uses k8s' CertificateSigningRequest API to a generate a
+    certificate signed by k8s CA suitable for use with sidecar-injector webhook
+    services. This requires permissions to create and approve CSR. See
+    https://kubernetes.io/docs/tasks/tls/managing-tls-in-a-cluster for
+    detailed explantion and additional instructions.
+    The server key/cert k8s CA cert are stored in a k8s secret.
+    usage: ${0} [OPTIONS]
+    The following flags are required.
+           --service          Service name of webhook.
+           --namespace        Namespace where webhook service and secret reside.
+           --secret           Secret name for CA certificate and server certificate/key pair.
+    EOF
+        exit 1
+    }
+    while [[ $# -gt 0 ]]; do
+        case ${1} in
+            --service)
+                service="$2"
+                shift
+                ;;
+            --secret)
+                secret="$2"
+                shift
+                ;;
+            --namespace)
+                namespace="$2"
+                shift
+                ;;
+            --cert_output_path)
+                cert_output_path="$2"
+                shift
+                ;;
+            *)
+                usage
+                ;;
+        esac
+        shift
+    done
+    [ -z ${service} ] && service=cache-server
+    [ -z ${secret} ] && secret=webhook-server-tls
+    [ -z ${namespace} ] && namespace=kubeflow
+    [ -z ${cert_output_path} ] && cert_output_path=${CA_FILE}
+    if [ ! -x "$(command -v openssl)" ]; then
+        echo "openssl not found"
+        exit 1
+    fi
+    csrName=${service}.${namespace}
+    tmpdir=$(mktemp -d)
+    echo "creating certs in tmpdir ${tmpdir} "
+    # create csr config file for csr generation.
+    # [req] is for csr with distinguished_name setting.
+    # [v3_req] is extensions to add to a certificate request in this case is for setting key constraints and usages.
+    # [alt_names] specifies additional subject identities. So the keys can be matched by different DNS names.
+    cat <<EOF >> ${tmpdir}/csr.conf
+    [req]
+    req_extensions = v3_req
+    distinguished_name = req_distinguished_name
+    [req_distinguished_name]
+    [ v3_req ]
+    basicConstraints = CA:FALSE
+    keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+    extendedKeyUsage = serverAuth
+    subjectAltName = @alt_names
+    [alt_names]
+    DNS.1 = ${service}
+    DNS.2 = ${service}.${namespace}
+    DNS.3 = ${service}.${namespace}.svc
+    EOF
+    openssl genrsa -out ${tmpdir}/server-key.pem 2048
+    openssl req -new -key ${tmpdir}/server-key.pem -subj "/CN=${service}.${namespace}.svc" -out ${tmpdir}/server.csr -config ${tmpdir}/csr.conf
+    echo "start running kubectl..."
+    # clean-up any previously created CSR for our service. Ignore errors if not present.
+    kubectl delete csr ${csrName} 2>/dev/null || true
+    # create  server cert/key CSR and  send to k8s API
+    cat <<EOF | kubectl create -f -
+    apiVersion: certificates.k8s.io/v1beta1
+    kind: CertificateSigningRequest
+    metadata:
+      name: ${csrName}
+    spec:
+      groups:
+      - system:authenticated
+      request: $(cat ${tmpdir}/server.csr | base64 | tr -d '\n')
+      usages:
+      - digital signature
+      - key encipherment
+      - server auth
+    EOF
+    # verify CSR has been created
+    while true; do
+        kubectl get csr ${csrName}
+        if [ "$?" -eq 0 ]; then
+            break
+        fi
+        sleep 1
+    done
+    # approve and fetch the signed certificate
+    kubectl certificate approve ${csrName}
+    # verify certificate has been signed
+    for x in $(seq 10); do
+        serverCert=$(kubectl get csr ${csrName} -o jsonpath='{.status.certificate}')
+        if [[ ${serverCert} != '' ]]; then
+            break
+        fi
+        sleep 1
+    done
+    if [[ ${serverCert} == '' ]]; then
+        echo "ERROR: After approving csr ${csrName}, the signed certificate did not appear on the resource. Giving up after 10 attempts." >&2
+        exit 1
+    fi
+    echo ${serverCert} | openssl base64 -d -A -out ${tmpdir}/server-cert.pem
+    echo ${serverCert} > ${cert_output_path}
+    # create the secret with CA cert and server cert/key
+    kubectl create secret generic ${secret} \
+            --from-file=key.pem=${tmpdir}/server-key.pem \
+            --from-file=cert.pem=${tmpdir}/server-cert.pem \
+            --dry-run -o yaml |
+        kubectl -n ${namespace} apply -f -
+  webhook-patch-ca-bundle.sh: |-
+    ROOT=$(cd $(dirname $0)/../../; pwd) set -o errexit set -o nounset set -o pipefail set -ex
+    while [[ $# -gt 0 ]]; do
+        case ${1} in
+            --cert_input_path)
+                cert_input_path="$2"
+                shift
+                ;;
+        esac
+        shift
+    done
+    [ -z ${cert_input_path} ] && cert_input_path=${CA_FILE}
+    export CA_BUNDLE=$(cat ${cert_input_path})
+    if command -v envsubst >/dev/null 2>&1; then
+        envsubst
+    else
+        sed -e "s|\${CA_BUNDLE}|${CA_BUNDLE}|g" -e "s|\${NAMESPACE}|${NAMESPACE}|g"
+    fi
+  cache-webhook-config.v1.yaml.template: |-
+    apiVersion: admissionregistration.k8s.io/v1
+    kind: MutatingWebhookConfiguration
+    metadata:
+      name: cache-webhook-${NAMESPACE}
+    webhooks:
+      - name: cache-server.${NAMESPACE}.svc
+        clientConfig:
+          service:
+            name: cache-server
+            namespace: ${NAMESPACE}
+            path: "/mutate"
+          caBundle: ${CA_BUNDLE}
+        failurePolicy: Ignore
+        rules:
+        - operations: [ "CREATE" ]
+          apiGroups: [""]
+          apiVersions: ["v1"]
+          resources: ["pods"]
+        sideEffects: None
+        timeoutSeconds: 5
+        objectSelector:
+          matchLabels:
+            pipelines.kubeflow.org/cache_enabled: "true"
+        admissionReviewVersions: ["v1beta1"]
+kind: ConfigMap
+metadata:
+  creationTimestamp: "2021-07-16T18:37:14Z"
+  managedFields:
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:data:
+        .: {}
+        f:deploy-cache-service.sh: {}
+        f:webhook-create-signed-cert.sh: {}
+        f:webhook-patch-ca-bundle.sh: {}
+    manager: Mozilla
+    operation: Update
+    time: "2021-07-16T19:30:48Z"
+  name: deploy-cache-service
+  namespace: kubeflow
+  resourceVersion: "26437768"
+  selfLink: /api/v1/namespaces/kubeflow/configmaps/deploy-cache-service
+  uid: c797be83-6dfb-4809-abc1-533fa1792c53

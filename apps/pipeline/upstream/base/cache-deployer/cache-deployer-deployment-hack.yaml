@@ -1,0 +1,205 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: '3'
+    kubectl.kubernetes.io/last-applied-configuration: >
+      {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"cache-deployer","app.kubernetes.io/component":"ml-pipeline","app.kubernetes.io/name":"kubeflow-pipelines","application-crd-id":"kubeflow-pipelines"},"name":"cache-deployer-deployment","namespace":"kubeflow"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"cache-deployer","app.kubernetes.io/component":"ml-pipeline","app.kubernetes.io/name":"kubeflow-pipelines","application-crd-id":"kubeflow-pipelines"}},"strategy":{"type":"Recreate"},"template":{"metadata":{"labels":{"app":"cache-deployer","app.kubernetes.io/component":"ml-pipeline","app.kubernetes.io/name":"kubeflow-pipelines","application-crd-id":"kubeflow-pipelines"}},"spec":{"containers":[{"env":[{"name":"NAMESPACE_TO_WATCH","valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}}],"image":"gcr.io/ml-pipeline/cache-deployer:1.5.1","imagePullPolicy":"Always","name":"main"}],"restartPolicy":"Always","serviceAccountName":"kubeflow-pipelines-cache-deployer-sa"}}}}
+  selfLink: /apis/apps/v1/namespaces/kubeflow/deployments/cache-deployer-deployment
+  resourceVersion: '26254978'
+  name: cache-deployer-deployment
+  uid: 4a98f732-34ac-41ae-9437-d789498556b8
+  creationTimestamp: '2021-07-16T01:33:37Z'
+  generation: 3
+  managedFields:
+    - manager: kubectl-client-side-apply
+      operation: Update
+      apiVersion: apps/v1
+      time: '2021-07-16T01:33:37Z'
+      fieldsType: FieldsV1
+      fieldsV1:
+        'f:metadata':
+          'f:annotations':
+            .: {}
+            'f:kubectl.kubernetes.io/last-applied-configuration': {}
+          'f:labels':
+            .: {}
+            'f:app': {}
+            'f:app.kubernetes.io/component': {}
+            'f:app.kubernetes.io/name': {}
+            'f:application-crd-id': {}
+        'f:spec':
+          'f:progressDeadlineSeconds': {}
+          'f:replicas': {}
+          'f:revisionHistoryLimit': {}
+          'f:selector': {}
+          'f:strategy':
+            'f:type': {}
+          'f:template':
+            'f:metadata':
+              'f:labels':
+                .: {}
+                'f:app': {}
+                'f:app.kubernetes.io/component': {}
+                'f:app.kubernetes.io/name': {}
+                'f:application-crd-id': {}
+            'f:spec':
+              'f:containers':
+                'k:{"name":"main"}':
+                  .: {}
+                  'f:env':
+                    .: {}
+                    'k:{"name":"NAMESPACE_TO_WATCH"}':
+                      .: {}
+                      'f:name': {}
+                      'f:valueFrom':
+                        .: {}
+                        'f:fieldRef':
+                          .: {}
+                          'f:apiVersion': {}
+                          'f:fieldPath': {}
+                  'f:image': {}
+                  'f:imagePullPolicy': {}
+                  'f:name': {}
+                  'f:resources': {}
+                  'f:terminationMessagePath': {}
+                  'f:terminationMessagePolicy': {}
+              'f:dnsPolicy': {}
+              'f:restartPolicy': {}
+              'f:schedulerName': {}
+              'f:securityContext':
+                .: {}
+                'f:runAsGroup': {}
+                'f:runAsNonRoot': {}
+                'f:runAsUser': {}
+              'f:serviceAccount': {}
+              'f:serviceAccountName': {}
+              'f:terminationGracePeriodSeconds': {}
+    - manager: kubectl-edit
+      operation: Update
+      apiVersion: apps/v1
+      time: '2021-07-16T17:33:14Z'
+      fieldsType: FieldsV1
+      fieldsV1:
+        'f:spec':
+          'f:template':
+            'f:spec':
+              'f:containers':
+                'k:{"name":"main"}':
+                  'f:env':
+                    'k:{"name":"HOME"}':
+                      .: {}
+                      'f:name': {}
+                      'f:value': {}
+              'f:securityContext':
+                'f:runAsGroup': {}
+                'f:runAsNonRoot': {}
+                'f:runAsUser': {}
+    - manager: kube-controller-manager
+      operation: Update
+      apiVersion: apps/v1
+      time: '2021-07-16T18:35:29Z'
+      fieldsType: FieldsV1
+      fieldsV1:
+        'f:metadata':
+          'f:annotations':
+            'f:deployment.kubernetes.io/revision': {}
+        'f:status':
+          'f:conditions':
+            .: {}
+            'k:{"type":"Available"}':
+              .: {}
+              'f:lastTransitionTime': {}
+              'f:lastUpdateTime': {}
+              'f:message': {}
+              'f:reason': {}
+              'f:status': {}
+              'f:type': {}
+            'k:{"type":"Progressing"}':
+              .: {}
+              'f:lastTransitionTime': {}
+              'f:lastUpdateTime': {}
+              'f:message': {}
+              'f:reason': {}
+              'f:status': {}
+              'f:type': {}
+          'f:observedGeneration': {}
+          'f:replicas': {}
+          'f:unavailableReplicas': {}
+          'f:updatedReplicas': {}
+  namespace: kubeflow
+  labels:
+    app: cache-deployer
+    app.kubernetes.io/component: ml-pipeline
+    app.kubernetes.io/name: kubeflow-pipelines
+    application-crd-id: kubeflow-pipelines
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cache-deployer
+      app.kubernetes.io/component: ml-pipeline
+      app.kubernetes.io/name: kubeflow-pipelines
+      application-crd-id: kubeflow-pipelines
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: cache-deployer
+        app.kubernetes.io/component: ml-pipeline
+        app.kubernetes.io/name: kubeflow-pipelines
+        application-crd-id: kubeflow-pipelines
+    spec:
+      containers:
+        - name: main
+          image: 'gcr.io/ml-pipeline/cache-deployer:1.5.1'
+          env:
+            - name: HOME
+              value: /tmp
+            - name: NAMESPACE_TO_WATCH
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+          resources: {}
+          volumeMounts:
+            - name: deploy-cache-service
+              mountPath: /kfp/cache/deployer
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          imagePullPolicy: Always
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+      serviceAccountName: kubeflow-pipelines-cache-deployer-sa
+      serviceAccount: kubeflow-pipelines-cache-deployer-sa
+      securityContext:
+        runAsUser: 1000799999
+        runAsGroup: 1000799999
+        runAsNonRoot: false
+        fsGroup: 1000799999
+      schedulerName: default-scheduler
+      volumes:
+      - name: deploy-cache-service
+        projected:
+          defaultMode: 0755
+          sources:
+          - configMap:
+             name: deploy-cache-service
+             items:
+               - key: deploy-cache-service.sh
+                 path: deploy-cache-service.sh
+                 mode: 0755
+               - key: webhook-create-signed-cert.sh
+                 path: webhook-create-signed-cert.sh
+                 mode: 0755
+               - key: webhook-patch-ca-bundle.sh
+                 path: webhook-patch-ca-bundle.sh
+                 mode: 0755
+               - key: cache-webhook-config.v1.yaml.template
+                 path: cache-webhook-config.v1.yaml.template
+                 mode: 0755
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 10
+  progressDeadlineSeconds: 600
